@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Sistema POS Guatemala</title>
+  <style>
+    :root {
+      --primary: #1e3a8a;
+      --secondary: #2563eb;
+      --accent: #16a34a;
+      --bg: #f1f5f9;
+      --surface: #ffffff;
+      --text: #0f172a;
+      --border: #cbd5e1;
+    }
+
+    * { box-sizing: border-box; touch-action: manipulation; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding-bottom: 70px; background: var(--bg); color: var(--text); }
+
+    header { background: var(--primary); color: white; padding: 12px; text-align: center; font-size: 1.1rem; font-weight: bold; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    
+    nav.bottom-nav {
+      position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface);
+      display: flex; justify-content: space-around; border-top: 1px solid var(--border); z-index: 1000; height: 60px;
+    }
+    nav.bottom-nav button {
+      background: none; border: none; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      font-size: 0.75rem; color: #64748b; font-weight: 600; padding: 4px;
+    }
+    nav.bottom-nav button.active { color: var(--secondary); border-top: 3px solid var(--secondary); }
+
+    .container { padding: 12px; max-width: 1000px; margin: 0 auto; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .card { background: var(--surface); padding: 16px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .card h3 { margin-top: 0; color: var(--primary); font-size: 1.1rem; border-bottom: 2px solid var(--bg); padding-bottom: 8px; }
+
+    input, select, button { width: 100%; padding: 10px 12px; margin-top: 6px; margin-bottom: 12px; border-radius: 8px; border: 1px solid var(--border); font-size: 0.95rem; }
+    button.btn-primary { background: var(--secondary); color: white; border: none; font-weight: bold; cursor: pointer; }
+    button.btn-success { background: var(--accent); color: white; border: none; font-weight: bold; cursor: pointer; }
+    button:active { transform: scale(0.98); }
+
+    .prod-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+    .prod-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px; text-align: center; display: flex; flex-direction: column; justify-content: space-between; cursor: pointer; }
+    .prod-card img { width: 100%; height: 90px; object-fit: cover; border-radius: 6px; background: #e2e8f0; }
+    .prod-card h4 { font-size: 0.85rem; margin: 6px 0 2px 0; height: 32px; overflow: hidden; }
+    .prod-card span { font-weight: bold; color: var(--accent); font-size: 0.9rem; }
+
+    .table-container { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { border: 1px solid var(--border); padding: 8px; text-align: left; }
+    th { background: #f8fafc; }
+
+    .badge { padding: 4px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; display: inline-block; }
+    .badge-pendiente { background: #fef08a; color: #854d0e; }
+    .badge-pagado { background: #bbf7d0; color: #166534; }
+
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center; }
+    .modal-content { background: white; padding: 20px; border-radius: 12px; width: 90%; max-width: 350px; text-align: center; }
+
+    #ticketPrint { display: none; width: 280px; padding: 10px; background: white; font-family: monospace; font-size: 11px; }
+    @media print {
+      body * { visibility: hidden; }
+      #ticketPrint, #ticketPrint * { visibility: visible; }
+      #ticketPrint { display: block; position: absolute; left: 0; top: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<header>SISTEMA POS GUATEMALA (Q)</header>
+
+<!-- IFRAME Y FORMULARIO SILENCIOSO -->
+<iframe name="hidden_iframe" id="hidden_iframe" style="display:none;"></iframe>
+<form id="silentForm" method="POST" target="hidden_iframe" style="display:none;">
+  <input type="hidden" name="action" id="formAction">
+  <input type="hidden" name="payload" id="formPayload">
+</form>
+
+<div class="container">
+
+  <!-- 1. PUNTO DE VENTA (POS) -->
+  <div id="vendedor" class="tab-content active">
+    <div class="card">
+      <h3>Catálogo de Productos</h3>
+      <div id="posGrid" class="prod-grid"></div>
+    </div>
+
+    <div class="card">
+      <h3>Carrito de Compras</h3>
+      <label>Cliente:</label>
+      <select id="selectCliente"></select>
+
+      <div class="table-container">
+        <table id="cartTable">
+          <thead><tr><th>Producto</th><th>Cant</th><th>Subtotal</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <h4 style="text-align: right;">Total: <span style="color: var(--accent);">Q<span id="cartTotal">0.00</span></span></h4>
+      
+      <label>Estado de Pago:</label>
+      <select id="estadoPago">
+        <option value="pagado">Pagado (Contado)</option>
+        <option value="pendiente">Pendiente (Crédito)</option>
+      </select>
+
+      <button class="btn-success" onclick="finalizarVenta()">Cobrar & Ticket</button>
+    </div>
+  </div>
+
+  <!-- 2. INVENTARIO -->
+  <div id="inventario" class="tab-content">
+    <div class="card">
+      <h3>Agregar Nuevo Producto 🔒</h3>
+      <input type="text" id="pNombre" placeholder="Nombre del producto">
+      <input type="number" id="pPrecio" placeholder="Precio en Quetzales (Q)">
+      <input type="number" id="pStock" placeholder="Cantidad / Stock inicial">
+      <input type="text" id="pImagenUrl" placeholder="URL de Imagen (Opcional)">
+      
+      <button class="btn-primary" onclick="solicitarAutorizacion('guardarProducto')">+ Guardar Producto</button>
+    </div>
+
+    <div class="card">
+      <h3>Inventario Actual</h3>
+      <div class="table-container">
+        <table id="invTable">
+          <thead><tr><th>Foto</th><th>Producto</th><th>Precio</th><th>Stock</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. CLIENTES -->
+  <div id="clientes" class="tab-content">
+    <div class="card">
+      <h3>Registrar Cliente 🔒</h3>
+      <input type="text" id="cNombre" placeholder="Nombre completo">
+      <input type="tel" id="cTelefono" placeholder="Teléfono de contacto">
+      <input type="email" id="cEmail" placeholder="Correo electrónico">
+      <input type="text" id="cDireccion" placeholder="Dirección de entrega">
+      
+      <button class="btn-primary" onclick="solicitarAutorizacion('guardarCliente')">+ Guardar Cliente</button>
+    </div>
+
+    <div class="card">
+      <h3>Lista de Clientes</h3>
+      <div class="table-container">
+        <table id="cliTable">
+          <thead><tr><th>Nombre</th><th>Teléfono</th><th>Email</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. SEGUIMIENTO DE COBROS -->
+  <div id="seguimiento" class="tab-content">
+    <div class="card">
+      <h3>Cuentas por Cobrar / Créditos</h3>
+      <div class="table-container">
+        <table id="segTable">
+          <thead><tr><th>Cliente</th><th>Monto</th><th>Estado</th><th>Acción</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. BALANCE Y CONFIGURACIÓN -->
+  <div id="balance" class="tab-content">
+    <div class="card">
+      <h3>Balance General (Caja)</h3>
+      <p>Ingresos: <b style="color: green;">Q<span id="balIngresos">0.00</span></b></p>
+      <p>Egresos: <b style="color: red;">Q<span id="balEgresos">0.00</span></b></p>
+      <hr>
+      <h4>Total Neto: <b>Q<span id="balTotal">0.00</span></b></h4>
+    </div>
+
+    <div class="card">
+      <h3>Configuración de Ticket & Seguridad</h3>
+      <label>Logo de Ticket:</label>
+      <input type="file" id="logoInput" accept="image/*" onchange="guardarLogo(event)">
+      <img id="previewLogo" src="" style="max-width: 100px; display: none; margin-top: 5px;">
+      
+      <hr>
+      <button class="btn-primary" onclick="cambiarPinConConfirmacion()">Cambiar Clave de Autorización</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- NAVEGACIÓN MÓVIL -->
+<nav class="bottom-nav">
+  <button class="active" onclick="showTab('vendedor', this)">🛒<span>POS</span></button>
+  <button onclick="showTab('inventario', this)">📦<span>Stock</span></button>
+  <button onclick="showTab('clientes', this)">👥<span>Clientes</span></button>
+  <button onclick="showTab('seguimiento', this)">📋<span>Cobros</span></button>
+  <button onclick="showTab('balance', this)">📊<span>Caja</span></button>
+</nav>
+
+<!-- MODAL PIN SEGURIDAD -->
+<div id="pinModal" class="modal">
+  <div class="modal-content">
+    <h3>Clave de Autorización</h3>
+    <p>Ingresa tu clave PIN para autorizar:</p>
+    <input type="password" id="inputPin" placeholder="PIN de seguridad">
+    <button class="btn-primary" onclick="verificarPin()">Confirmar</button>
+    <button style="background: #94a3b8; color: white;" onclick="cerrarModal()">Cancelar</button>
+  </div>
+</div>
+
+<!-- TICKET IMPRESIÓN -->
+<div id="ticketPrint">
+  <center>
+    <img id="ticketLogo" src="" style="max-width: 100px; display: none;"><br>
+    <b>TICKET DE VENTA</b><br>
+    <span id="ticketFecha"></span>
+  </center>
+  <hr>
+  <div>Cliente: <span id="ticketCliente"></span></div>
+  <hr>
+  <div id="ticketDetalle"></div>
+  <hr>
+  <div style="text-align: right;"><b>TOTAL: Q<span id="ticketTotal"></span></b></div>
+  <center><br>¡Gracias por su compra!</center>
+</div>
+
+<script>
+  // ⚠ PEGA AQUÍ TU URL COPIADA DE GOOGLE APPS SCRIPT
+  const API_URL = "https://script.google.com/macros/s/AKfycbye-ZDCsuLSbrywitI7oDYeZ4zhF3H89TfFkgk5uP0kgcvfIx7qcCvbnpDj8POiZCEI/exec";
+
+  let state = { clientes: [], productos: [], seguimiento: [], cart: [] };
+  let accionPendiente = null;
+
+  if(!localStorage.getItem("authPIN")) localStorage.setItem("authPIN", "1234");
+
+  function sendDataSilent(action, payload) {
+    let form = document.getElementById("silentForm");
+    form.action = API_URL;
+    document.getElementById("formAction").value = action;
+    document.getElementById("formPayload").value = JSON.stringify(payload);
+    form.submit();
+  }
+
+  async function loadData() {
+    try {
+      let res = await fetch(API_URL + "?action=getData");
+      let data = await res.json();
+      if(data.status === 'success') {
+        state.clientes = data.clientes || [];
+        state.productos = data.productos || [];
+        state.seguimiento = data.seguimiento || [];
+        renderPOS();
+        renderInventario();
+        renderClientes();
+        renderSeguimiento();
+        renderBalance(data.balance);
+      }
+    } catch(e) {
+      console.error("Error cargando datos", e);
+    }
+  }
+
+  function showTab(tabId, btn) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.bottom-nav button').forEach(el => el.classList.remove('active'));
+    document.getElementById(tabId).classList.add('active');
+    if(btn) btn.classList.add('active');
+  }
+
+  function ejecutarGuardarProducto() {
+    let nombre = document.getElementById("pNombre").value;
+    let precio = parseFloat(document.getElementById("pPrecio").value);
+    let stock = parseInt(document.getElementById("pStock").value) || 0;
+    let imagen = document.getElementById("pImagenUrl").value;
+
+    if(!nombre || isNaN(precio)) return alert("Ingresa un nombre y precio válido");
+
+    sendDataSilent("guardarProducto", { nombre, precio, stock, imagen });
+
+    alert("Guardando producto...");
+    document.getElementById("pNombre").value = "";
+    document.getElementById("pPrecio").value = "";
+    document.getElementById("pStock").value = "";
+    document.getElementById("pImagenUrl").value = "";
+    setTimeout(loadData, 2000);
+  }
+
+  function ejecutarGuardarCliente() {
+    let nombre = document.getElementById("cNombre").value;
+    let telefono = document.getElementById("cTelefono").value;
+    let email = document.getElementById("cEmail").value;
+    let direccion = document.getElementById("cDireccion").value;
+
+    if(!nombre) return alert("Ingresa el nombre del cliente");
+
+    sendDataSilent("guardarCliente", { nombre, telefono, email, direccion });
+
+    alert("Guardando cliente...");
+    document.getElementById("cNombre").value = "";
+    document.getElementById("cTelefono").value = "";
+    document.getElementById("cEmail").value = "";
+    document.getElementById("cDireccion").value = "";
+    setTimeout(loadData, 2000);
+  }
+
+  function renderPOS() {
+    let grid = document.getElementById("posGrid");
+    grid.innerHTML = state.productos.map(p => `
+      <div class="prod-card" onclick="addToCart('${p.id}')">
+        <img src="${p.imagen || 'https://via.placeholder.com/100?text=Sin+Imagen'}" alt="${p.nombre}">
+        <h4>${p.nombre}</h4>
+        <span>Q${parseFloat(p.precio).toFixed(2)}</span>
+        <small style="font-size:0.7rem; color:#64748b;">Stock: ${p.stock}</small>
+      </div>
+    `).join('');
+
+    let selectC = document.getElementById("selectCliente");
+    selectC.innerHTML = '<option value="Cliente General">Cliente General</option>' + 
+      state.clientes.map(c => `<option value="${c.nombre}">${c.nombre}</option>`).join('');
+  }
+
+  function renderInventario() {
+    let tbody = document.querySelector("#invTable tbody");
+    tbody.innerHTML = state.productos.map(p => `
+      <tr>
+        <td><img src="${p.imagen || 'https://via.placeholder.com/40'}" width="35" height="35" style="border-radius:4px; object-fit:cover;"></td>
+        <td>${p.nombre}</td>
+        <td>Q${parseFloat(p.precio).toFixed(2)}</td>
+        <td>${p.stock}</td>
+      </tr>
+    `).join('');
+  }
+
+  function renderClientes() {
+    let tbody = document.querySelector("#cliTable tbody");
+    tbody.innerHTML = state.clientes.map(c => `
+      <tr>
+        <td>${c.nombre}</td>
+        <td>${c.telefono}</td>
+        <td>${c.email}</td>
+      </tr>
+    `).join('');
+  }
+
+  function addToCart(id) {
+    let prod = state.productos.find(p => p.id == id);
+    if (!prod || prod.stock <= 0) return alert("Sin stock disponible");
+    
+    let item = state.cart.find(i => i.id == id);
+    if (item) {
+      if(item.cantidad < prod.stock) item.cantidad++;
+      else alert("Límite de stock alcanzado");
+    } else {
+      state.cart.push({ id: prod.id, nombre: prod.nombre, precio: prod.precio, cantidad: 1 });
+    }
+    renderCart();
+  }
+
+  function renderCart() {
+    let tbody = document.querySelector("#cartTable tbody");
+    let total = 0;
+    tbody.innerHTML = state.cart.map((item, index) => {
+      let sub = item.precio * item.cantidad;
+      total += sub;
+      return `
+        <tr>
+          <td>${item.nombre}</td>
+          <td>${item.cantidad}</td>
+          <td>Q${sub.toFixed(2)}</td>
+          <td><button style="background:red; color:white; padding:2px 6px;" onclick="state.cart.splice(${index},1); renderCart();">X</button></td>
+        </tr>
+      `;
+    }).join('');
+    document.getElementById("cartTotal").innerText = total.toFixed(2);
+  }
+
+  function finalizarVenta() {
+    if (state.cart.length === 0) return alert("El carrito está vacío");
+    let cliente = document.getElementById("selectCliente").value;
+    let estadoPago = document.getElementById("estadoPago").value;
+    let total = parseFloat(document.getElementById("cartTotal").innerText);
+
+    sendDataSilent("registrarVenta", { cliente, items: state.cart, total, estadoPago });
+
+    imprimirTicket(cliente, state.cart, total);
+    state.cart = [];
+    renderCart();
+    alert("Procesando venta...");
+    setTimeout(loadData, 2000);
+  }
+
+  function renderSeguimiento() {
+    let tbody = document.querySelector("#segTable tbody");
+    tbody.innerHTML = state.seguimiento.map(s => `
+      <tr>
+        <td>${s.cliente}</td>
+        <td>Q${parseFloat(s.monto).toFixed(2)}</td>
+        <td><span class="badge badge-${s.estado}">${s.estado.toUpperCase()}</span></td>
+        <td>
+          ${s.estado === 'pendiente' ? `<button class="btn-success" style="padding:4px;" onclick="cambiarEstadoPago('${s.id}', 'pagado')">Cobrado</button>` : ''}
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  function cambiarEstadoPago(id, nuevoEstado) {
+    sendDataSilent("actualizarEstadoPago", { id, nuevoEstado });
+    alert("Procesando cobro...");
+    setTimeout(loadData, 2000);
+  }
+
+  function renderBalance(bal) {
+    if (!bal) return;
+    document.getElementById("balIngresos").innerText = parseFloat(bal.ingresos || 0).toFixed(2);
+    document.getElementById("balEgresos").innerText = parseFloat(bal.egresos || 0).toFixed(2);
+    document.getElementById("balTotal").innerText = parseFloat(bal.balanceTotal || 0).toFixed(2);
+  }
+
+  function solicitarAutorizacion(accion) {
+    accionPendiente = accion;
+    document.getElementById("pinModal").style.display = "flex";
+  }
+
+  function cerrarModal() {
+    document.getElementById("pinModal").style.display = "none";
+    document.getElementById("inputPin").value = "";
+    accionPendiente = null;
+  }
+
+  function verificarPin() {
+    let pinIngresado = document.getElementById("inputPin").value;
+    let pinValido = localStorage.getItem("authPIN");
+
+    if(pinIngresado === pinValido) {
+      cerrarModal();
+      if(accionPendiente === 'guardarProducto') ejecutarGuardarProducto();
+      if(accionPendiente === 'guardarCliente') ejecutarGuardarCliente();
+    } else {
+      alert("Clave PIN incorrecta");
+    }
+  }
+
+  function cambiarPinConConfirmacion() {
+    let simCodigo = Math.floor(1000 + Math.random() * 9000);
+    alert("🔒 Código de seguridad temporal: " + simCodigo);
+    let ingreso = prompt("Ingresa el código mostrado arriba:");
+    if(parseInt(ingreso) === simCodigo) {
+      let nuevoPin = prompt("Ingresa tu nuevo PIN de seguridad:");
+      if(nuevoPin) {
+        localStorage.setItem("authPIN", nuevoPin);
+        alert("Clave PIN actualizada con éxito.");
+      }
+    } else {
+      alert("Código de verificación incorrecto.");
+    }
+  }
+
+  function guardarLogo(e) {
+    let file = e.target.files[0];
+    let reader = new FileReader();
+    reader.onload = function(evt) {
+      localStorage.setItem("customLogo", evt.target.result);
+      loadLogo();
+    };
+    if(file) reader.readAsDataURL(file);
+  }
+
+  function loadLogo() {
+    let logoData = localStorage.getItem("customLogo");
+    if (logoData) {
+      document.getElementById("previewLogo").src = logoData;
+      document.getElementById("previewLogo").style.display = "block";
+      document.getElementById("ticketLogo").src = logoData;
+      document.getElementById("ticketLogo").style.display = "block";
+    }
+  }
+
+  function imprimirTicket(cliente, items, total) {
+    document.getElementById("ticketFecha").innerText = new Date().toLocaleString();
+    document.getElementById("ticketCliente").innerText = cliente;
+    document.getElementById("ticketDetalle").innerHTML = items.map(i => `<div>${i.cantidad}x ${i.nombre} Q${(i.precio * i.cantidad).toFixed(2)}</div>`).join('');
+    document.getElementById("ticketTotal").innerText = total.toFixed(2);
+    window.print();
+  }
+
+  loadLogo();
+  loadData();
+</script>
+
+</body>
+</html>
