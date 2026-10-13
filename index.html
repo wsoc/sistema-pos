@@ -289,14 +289,12 @@
 
     if(!nombre || isNaN(precio)) return alert("Ingresa un nombre y precio válido");
 
-    sendDataSilent("guardarProducto", { nombre, precio, stock, imagen });
-
-    alert("Guardando producto...");
-    document.getElementById("pNombre").value = "";
-    document.getElementById("pPrecio").value = "";
-    document.getElementById("pStock").value = "";
-    document.getElementById("pImagenUrl").value = "";
-    setTimeout(loadData, 2000);
+ function sendDataSilent(action, payload) {
+    let form = document.getElementById("silentForm");
+    form.action = API_URL;
+    document.getElementById("formAction").value = action;
+    document.getElementById("formPayload").value = JSON.stringify(payload);
+    form.submit();
   }
 
   function ejecutarGuardarCliente() {
@@ -307,14 +305,12 @@
 
     if(!nombre) return alert("Ingresa el nombre del cliente");
 
-    sendDataSilent("guardarCliente", { nombre, telefono, email, direccion });
-
-    alert("Guardando cliente...");
-    document.getElementById("cNombre").value = "";
-    document.getElementById("cTelefono").value = "";
-    document.getElementById("cEmail").value = "";
-    document.getElementById("cDireccion").value = "";
-    setTimeout(loadData, 2000);
+function sendDataSilent(action, payload) {
+    let form = document.getElementById("silentForm");
+    form.action = API_URL;
+    document.getElementById("formAction").value = action;
+    document.getElementById("formPayload").value = JSON.stringify(payload);
+    form.submit();
   }
 
   function renderPOS() {
